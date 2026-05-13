@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>메모장 — NoteFlow</title>
+  <meta name="description" content="간단하고 아름다운 메모장 앱 NoteFlow. 메모를 작성하고, 저장하고, 관리하세요." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <span class="logo-icon">✦</span>
+        <span class="logo-text">NoteFlow</span>
+      </div>
+      <button class="new-note-btn" id="newNoteBtn" title="새 메모">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    </div>
+
+    <div class="search-wrap">
+      <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="search-input" id="searchInput" placeholder="메모 검색..." />
+    </div>
+
+    <div class="notes-list" id="notesList"></div>
+  </aside>
+
+  <!-- Main Editor -->
+  <main class="editor-area" id="editorArea">
+    <header class="editor-header">
+      <button class="sidebar-toggle" id="sidebarToggle" title="사이드바 토글">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+
+      <div class="toolbar" id="toolbar">
+        <button class="tool-btn" id="boldBtn" title="굵게 (Ctrl+B)"><strong>B</strong></button>
+        <button class="tool-btn italic-btn" id="italicBtn" title="기울임 (Ctrl+I)"><em>I</em></button>
+        <button class="tool-btn" id="underlineBtn" title="밑줄 (Ctrl+U)"><u>U</u></button>
+        <div class="tool-divider"></div>
+        <button class="tool-btn" id="listBtn" title="목록">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor"/><circle cx="4" cy="12" r="1.5" fill="currentColor"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/></svg>
+        </button>
+        <div class="tool-divider"></div>
+        <select class="tool-select" id="fontSizeSelect" title="글꼴 크기">
+          <option value="14px">14</option>
+          <option value="16px" selected>16</option>
+          <option value="18px">18</option>
+          <option value="20px">20</option>
+          <option value="24px">24</option>
+          <option value="32px">32</option>
+        </select>
+        <div class="tool-divider"></div>
+        <input type="color" class="color-picker" id="colorPicker" title="글자 색상" value="#e2e8f0" />
+      </div>
+
+      <div class="header-actions">
+        <span class="word-count" id="wordCount">0자</span>
+        <button class="action-btn save-btn" id="saveBtn" title="저장 (Ctrl+S)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
+          저장
+        </button>
+        <button class="action-btn delete-btn" id="deleteBtn" title="삭제">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6"/><path d="M14,11v6"/><path d="M9,6V4h6v2"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">✦</div>
+      <h2>메모를 선택하거나 새로 만들어 보세요</h2>
+      <p>왼쪽에서 기존 메모를 고르거나, <strong>+</strong> 버튼으로 새 메모를 시작하세요.</p>
+      <button class="start-btn" id="startBtn">새 메모 시작하기</button>
+    </div>
+
+    <!-- Editor Content -->
+    <div class="editor-content" id="editorContent" style="display:none;">
+      <input type="text" class="note-title-input" id="noteTitleInput" placeholder="제목을 입력하세요..." />
+      <div class="note-meta" id="noteMeta"></div>
+      <div class="editor" id="editor" contenteditable="true" spellcheck="false" placeholder="여기에 메모를 입력하세요..."></div>
+    </div>
+  </main>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Delete confirm modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-icon">🗑️</div>
+      <h3>메모를 삭제할까요?</h3>
+      <p>이 작업은 되돌릴 수 없습니다.</p>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="modalCancel">취소</button>
+        <button class="modal-confirm" id="modalConfirm">삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
