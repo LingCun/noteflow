@@ -91,9 +91,12 @@
     }
     .logout-btn:hover { background: rgba(248, 113, 113, 0.12); color: #f87171; }
 
+    /* App shell — matches the original body flex layout */
+    #appShell { display: flex; height: 100vh; width: 100%; }
+
     /* Sidebar uses flex column so user-info sticks to bottom */
     .sidebar { display: flex; flex-direction: column; }
-    .notes-list { flex: 1; }
+    .notes-list { flex: 1; min-height: 0; overflow-y: auto; }
   </style>
 </head>
 <body>
