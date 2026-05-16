@@ -35,6 +35,7 @@ let currentId = null;
 let saveTimer = null;
 let sidebarOpen = true;
 let notesUnsubscribe = null;
+let activeDateFilter = null;   // 'YYYY-MM-DD' or null
 
 // ── DOM Refs ───────────────────────────
 const notesList      = document.getElementById('notesList');
@@ -43,6 +44,9 @@ const editor         = document.getElementById('editor');
 const editorContent  = document.getElementById('editorContent');
 const emptyState     = document.getElementById('emptyState');
 const noteMeta       = document.getElementById('noteMeta');
+const noteMetaTime   = document.getElementById('noteMetaTime');
+const noteDateInput  = document.getElementById('noteDateInput');
+const noteDateText   = document.getElementById('noteDateText');
 const wordCount      = document.getElementById('wordCount');
 const searchInput    = document.getElementById('searchInput');
 const toast          = document.getElementById('toast');
@@ -54,6 +58,9 @@ const googleBtn      = document.getElementById('googleLoginBtn');
 const userAvatar     = document.getElementById('userAvatar');
 const userName       = document.getElementById('userName');
 const logoutBtn      = document.getElementById('logoutBtn');
+const filterChip     = document.getElementById('filterChip');
+const filterChipText = document.getElementById('filterChipText');
+const filterClearBtn = document.getElementById('filterClearBtn');
 
 // ── Helpers ────────────────────────────
 function genId() {
@@ -110,6 +117,29 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// ── Date helpers ──────────────────────
+function dateKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function noteDateOf(n) {
+  if (n && n.noteDate) return n.noteDate;
+  if (n && n.createdAt) return dateKey(new Date(n.createdAt));
+  return dateKey(new Date());
+}
+const DOW_KO = ['일','월','화','수','목','금','토'];
+function formatNoteDate(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  const dow = DOW_KO[new Date(y, m - 1, d).getDay()];
+  return `${y}년 ${m}월 ${d}일 (${dow})`;
+}
+function formatFilterChipText(key) {
+  const [, m, d] = key.split('-').map(Number);
+  return `${m}월 ${d}일의 메모`;
 }
 
 // ── Auth ───────────────────────────────
@@ -182,6 +212,7 @@ function subscribeToNotes(isNewUser) {
   notesUnsubscribe = onSnapshot(q, async (snap) => {
     notes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderSidebar(searchInput.value);
+    window.dispatchEvent(new Event('noteflow:notes-updated'));
 
     if (firstSnap) {
       firstSnap = false;
@@ -209,12 +240,13 @@ async function createWelcomeNote() {
       title: 'NoteFlow에 오신 걸 환영해요 👋',
       content: `<p>안녕하세요! <strong>NoteFlow</strong>는 당신의 아이디어를 자유롭게 기록하는 공간입니다.</p>
 <br>
-<p>✦ <strong>새 메모</strong> — 왼쪽 상단 <strong>+</strong> 버튼 또는 <strong>Ctrl+N</strong></p>
+<p>✦ <strong>새 메모</strong> — 오른쪽 상단 <strong>+</strong> 버튼 또는 <strong>Ctrl+N</strong></p>
+<p>✦ <strong>달력</strong> — 왼쪽 달력에서 날짜를 클릭하면 그 날의 메모만 보여요</p>
 <p>✦ <strong>저장</strong> — 입력하면 자동으로 클라우드에 저장됩니다</p>
 <p>✦ <strong>서식</strong> — 텍스트를 드래그하고 툴바의 B / I / U 버튼을 눌러보세요</p>
-<p>✦ <strong>검색</strong> — 왼쪽 검색창에 키워드를 입력하세요</p>
 <br>
 <p>다른 기기에서도 같은 Google 계정으로 로그인하면 메모가 그대로 보입니다. 🚀</p>`,
+      noteDate: dateKey(new Date()),
       createdAt: Date.now(),
       updatedAt: Date.now()
     });
@@ -226,15 +258,31 @@ async function createWelcomeNote() {
 // ── Render Sidebar ─────────────────────
 function renderSidebar(qStr = '') {
   const q = (qStr || '').toLowerCase().trim();
-  const filtered = notes
-    .filter(n => !q || (n.title || '').toLowerCase().includes(q) || getPlainText(n.content).toLowerCase().includes(q))
-    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+  // Filter chip visibility
+  if (activeDateFilter) {
+    filterChip.style.display = '';
+    filterChipText.textContent = formatFilterChipText(activeDateFilter);
+  } else {
+    filterChip.style.display = 'none';
+  }
+
+  let filtered = notes.filter(n =>
+    !q || (n.title || '').toLowerCase().includes(q) || getPlainText(n.content).toLowerCase().includes(q)
+  );
+  if (activeDateFilter) {
+    filtered = filtered.filter(n => noteDateOf(n) === activeDateFilter);
+  }
+  filtered.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
   if (filtered.length === 0) {
+    const msg = activeDateFilter
+      ? `${formatFilterChipText(activeDateFilter)}가 없습니다`
+      : (q ? '검색 결과가 없습니다' : '메모가 없습니다');
     notesList.innerHTML = `
       <div class="empty-list">
         <div class="empty-list-icon">📝</div>
-        <div>${q ? '검색 결과가 없습니다' : '메모가 없습니다'}</div>
+        <div>${msg}</div>
       </div>`;
     return;
   }
@@ -263,7 +311,10 @@ function selectNote(id) {
   currentId = id;
   noteTitleInput.value = note.title || '';
   editor.innerHTML = note.content || '';
-  noteMeta.textContent = `마지막 수정: ${formatDate(note.updatedAt)}`;
+  const dk = noteDateOf(note);
+  noteDateInput.value = dk;
+  noteDateText.textContent = formatNoteDate(dk);
+  noteMetaTime.textContent = `마지막 수정: ${formatDate(note.updatedAt)}`;
   emptyState.style.display = 'none';
   editorContent.style.display = 'flex';
   renderSidebar(searchInput.value);
@@ -276,15 +327,18 @@ function selectNote(id) {
 async function createNote() {
   if (!currentUser) return;
   const id = genId();
+  const noteDate = activeDateFilter || dateKey(new Date());
   const data = {
     title: '',
     content: '',
+    noteDate,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
   notes.unshift({ id, ...data });
   currentId = id;
   selectNote(id);
+  window.dispatchEvent(new Event('noteflow:notes-updated'));
   setTimeout(() => noteTitleInput.focus(), 50);
   try {
     await setDoc(noteRef(id), data);
@@ -302,13 +356,15 @@ async function autoSave() {
   const data = {
     title: noteTitleInput.value,
     content: editor.innerHTML,
+    noteDate: noteDateInput.value || noteDateOf(notes[idx]),
     updatedAt: Date.now()
   };
   notes[idx].title = data.title;
   notes[idx].content = data.content;
+  notes[idx].noteDate = data.noteDate;
   notes[idx].updatedAt = data.updatedAt;
   renderSidebar(searchInput.value);
-  noteMeta.textContent = `마지막 수정: 방금 전`;
+  noteMetaTime.textContent = `마지막 수정: 방금 전`;
   try {
     await setDoc(noteRef(currentId), data, { merge: true });
   } catch (err) {
@@ -375,7 +431,26 @@ function syncToolbar() {
 // ── Event Listeners ────────────────────
 document.getElementById('newNoteBtn').addEventListener('click', createNote);
 document.getElementById('startBtn').addEventListener('click', createNote);
-document.getElementById('sidebarToggle').addEventListener('click', () => setSidebar(!sidebarOpen));
+document.getElementById('rightPanelToggle').addEventListener('click', () => setSidebar(!sidebarOpen));
+document.getElementById('rightPanelToggle').classList.add('active');
+
+filterClearBtn.addEventListener('click', () => {
+  activeDateFilter = null;
+  renderSidebar(searchInput.value);
+  // Also clear selectedKey on calendar (handled via custom event so calendar block can listen)
+  window.dispatchEvent(new Event('noteflow:filter-cleared'));
+});
+
+noteDateInput.addEventListener('change', () => {
+  if (!currentId) return;
+  const v = noteDateInput.value;
+  if (!v) return;
+  noteDateText.textContent = formatNoteDate(v);
+  scheduleAutoSave();
+  const idx = notes.findIndex(n => n.id === currentId);
+  if (idx !== -1) notes[idx].noteDate = v;
+  window.dispatchEvent(new Event('noteflow:notes-updated'));
+});
 
 noteTitleInput.addEventListener('input', () => { scheduleAutoSave(); updateWordCount(); });
 noteTitleInput.addEventListener('keydown', e => {
@@ -426,3 +501,236 @@ document.getElementById('colorPicker').addEventListener('input', function() {
   try { range.surroundContents(span); } catch {}
   editor.focus();
 });
+
+// ── Calendar (mouse-wheel month picker) ──────────────
+{
+  const calendarPanel      = document.getElementById('calendarPanel');
+  const calendarToggleBtn  = document.getElementById('leftPanelToggle');
+  const calendarPanelClose = document.getElementById('calendarPanelClose');
+  const monthTape          = document.getElementById('monthTape');
+  const monthTapeWrap      = document.getElementById('monthTapeWrap');
+  const calDaysGrid        = document.getElementById('calDaysGrid');
+  const todayBtn           = document.getElementById('todayBtn');
+  const monthLabel         = document.getElementById('monthLabel');
+
+  const ITEM_H = 56;
+  const VISIBLE_ROWS = 3;
+
+  const todayDate = new Date();
+  const todayIdx  = todayDate.getFullYear() * 12 + todayDate.getMonth();
+  const range = { from: todayIdx - 60 * 12, to: todayIdx + 30 * 12 };
+
+  let position    = todayIdx;   // float; integer == snapped
+  let velocity    = 0;
+  let lastWheel   = 0;
+  let rafId       = null;
+  let snappedIdx  = todayIdx;
+  let selectedKey = null;
+
+  const fromIdx = (i) => ({ year: Math.floor(i / 12), month: ((i % 12) + 12) % 12 });
+
+  function renderTapeLabels() {
+    const html = [];
+    for (let i = range.from; i <= range.to; i++) {
+      const { year, month } = fromIdx(i);
+      html.push(
+        `<div class="month-tape-item" data-idx="${i}" style="height:${ITEM_H}px">
+          <span class="tape-year">${year}</span>
+          <span class="tape-month">${month + 1}월</span>
+        </div>`
+      );
+    }
+    monthTape.innerHTML = html.join('');
+  }
+
+  function tapeTransform() {
+    const containerH = ITEM_H * VISIBLE_ROWS;
+    const centerY = containerH / 2 - ITEM_H / 2;
+    const offset = (position - range.from) * ITEM_H;
+    monthTape.style.transform = `translateY(${centerY - offset}px)`;
+  }
+
+  function markCenter() {
+    const centerIdx = Math.round(position);
+    const items = monthTape.children;
+    for (let k = 0; k < items.length; k++) {
+      const el = items[k];
+      const idx = parseInt(el.dataset.idx, 10);
+      el.classList.toggle('center', idx === centerIdx);
+    }
+  }
+
+  function setScrolling(s) {
+    monthTapeWrap.classList.toggle('scrolling', s);
+    calDaysGrid.classList.toggle('scrolling', s);
+  }
+
+  function noteDateSet() {
+    const set = new Set();
+    notes.forEach(n => set.add(noteDateOf(n)));
+    return set;
+  }
+
+  function renderGrid(idx) {
+    const { year, month } = fromIdx(idx);
+    const firstDow     = new Date(year, month, 1).getDay();
+    const daysInMonth  = new Date(year, month + 1, 0).getDate();
+    const todayKey     = dateKey(todayDate);
+    const noteDates    = noteDateSet();
+
+    const cells = [];
+    for (let i = 0; i < firstDow; i++) cells.push(`<div class="cal-cell empty"></div>`);
+    for (let day = 1; day <= daysInMonth; day++) {
+      const key = dateKey(new Date(year, month, day));
+      const cls = [
+        'cal-cell',
+        key === todayKey ? 'today' : '',
+        key === selectedKey ? 'selected' : '',
+      ].filter(Boolean).join(' ');
+      const dot = noteDates.has(key) ? '<span class="cal-dot"></span>' : '';
+      cells.push(
+        `<div class="${cls}" data-date="${key}">
+          <span class="cal-day">${day}</span>${dot}
+        </div>`
+      );
+    }
+    calDaysGrid.innerHTML = cells.join('');
+    monthLabel.textContent = `${year}년 ${month + 1}월`;
+
+    calDaysGrid.querySelectorAll('.cal-cell:not(.empty)').forEach(el => {
+      el.addEventListener('click', () => {
+        const key = el.dataset.date;
+        selectedKey = key;
+        activeDateFilter = key;
+        renderGrid(idx);
+        renderSidebar(searchInput.value);
+        // Open first note from that day if any
+        const match = notes.find(n => noteDateOf(n) === key);
+        if (match) {
+          selectNote(match.id);
+        } else {
+          currentId = null;
+          editorContent.style.display = 'none';
+          emptyState.style.display = '';
+        }
+      });
+    });
+  }
+
+  function onWheel(e) {
+    e.preventDefault();
+    const now = performance.now();
+    const dt = now - lastWheel;
+    lastWheel = now;
+    const dir = e.deltaY > 0 ? 1 : -1;
+    const boost = dt < 60 ? 0.55 : dt < 120 ? 0.32 : 0.16;
+    velocity += dir * boost;
+    if (velocity >  2.5) velocity =  2.5;
+    if (velocity < -2.5) velocity = -2.5;
+    if (rafId === null) loop();
+  }
+
+  function loop() {
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      position += velocity;
+      velocity *= 0.88;
+
+      if (position < range.from) { position = range.from; velocity = 0; }
+      if (position > range.to)   { position = range.to;   velocity = 0; }
+
+      const moving = Math.abs(velocity) > 0.02;
+      if (!moving) {
+        // Snap easing — kill momentum and pull straight toward nearest integer
+        velocity = 0;
+        const target = Math.round(position);
+        const diff   = target - position;
+        if (Math.abs(diff) < 0.015) {
+          position = target;
+          tapeTransform();
+          markCenter();
+          setScrolling(false);
+          if (target !== snappedIdx) {
+            snappedIdx = target;
+            renderGrid(snappedIdx);
+          }
+          return;
+        }
+        position += diff * 0.35;
+        setScrolling(false);  // grid sharpens during snap easing
+      } else {
+        setScrolling(true);
+      }
+      tapeTransform();
+      markCenter();
+      loop();
+    });
+  }
+
+  function animateTo(target) {
+    velocity = 0;
+    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    const startPos  = position;
+    const startTime = performance.now();
+    const dur = 600;
+    function tween() {
+      const t = Math.min(1, (performance.now() - startTime) / dur);
+      const ease = 1 - Math.pow(1 - t, 3);
+      position = startPos + (target - startPos) * ease;
+      setScrolling(t < 0.95);
+      tapeTransform();
+      markCenter();
+      if (t >= 1) {
+        position = target;
+        setScrolling(false);
+        if (target !== snappedIdx) {
+          snappedIdx = target;
+          renderGrid(snappedIdx);
+        }
+        return;
+      }
+      requestAnimationFrame(tween);
+    }
+    requestAnimationFrame(tween);
+  }
+
+  // Init
+  renderTapeLabels();
+  tapeTransform();
+  markCenter();
+  renderGrid(snappedIdx);
+
+  monthTapeWrap.addEventListener('wheel', onWheel, { passive: false });
+
+  todayBtn.addEventListener('click', () => {
+    const t = new Date();
+    selectedKey = null;
+    activeDateFilter = null;
+    renderSidebar(searchInput.value);
+    const target = t.getFullYear() * 12 + t.getMonth();
+    if (target === snappedIdx) renderGrid(snappedIdx);  // already on this month: just clear selection
+    else animateTo(target);
+  });
+
+  window.addEventListener('noteflow:filter-cleared', () => {
+    selectedKey = null;
+    renderGrid(snappedIdx);
+  });
+
+  function setCalendarOpen(open) {
+    calendarPanel.classList.toggle('collapsed', !open);
+    calendarPanel.style.width    = open ? '' : '0px';
+    calendarPanel.style.minWidth = open ? '' : '0px';
+    calendarToggleBtn.classList.toggle('active', open);
+  }
+  calendarToggleBtn.addEventListener('click', () => {
+    setCalendarOpen(calendarPanel.classList.contains('collapsed'));
+  });
+  calendarPanelClose.addEventListener('click', () => setCalendarOpen(false));
+  // start open + button active
+  setCalendarOpen(true);
+  // auto-collapse on narrow screens
+  if (window.innerWidth <= 1100) setCalendarOpen(false);
+
+  window.addEventListener('noteflow:notes-updated', () => renderGrid(snappedIdx));
+}
